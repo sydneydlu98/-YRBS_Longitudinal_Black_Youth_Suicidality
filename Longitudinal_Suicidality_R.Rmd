@@ -129,7 +129,6 @@ for (i in seq_along(q_colnames)){
 }
 ```
 
-
 ## Raw Count
 
 ```{r}
@@ -211,55 +210,16 @@ yrbs_all %>%
 table(yrbs_all$race7)
 ```
 
-## Weight VS Unweighted
-
-```{r}
-###unweighted -- lines 16-30 are basic R code for looking at raw data (without incorporating survey weight)
-###for the final manuscript, we should report weighted results (lines 36-53)
-###I'm providing the unweighted code here just so you can see the similarities/differences b/t two analyses 
-table(yrbs_all$q26) 
-
-tmp1 = table(yrbs_all$q26, yrbs_all$year) #q26 by year
-tmp1 
-
-#creating dataset for making ggplot
-tmp2 = data.frame(prop.table(tmp1[c("Yes", "No"), ], 2)["Yes", ] * 100)
-tmp2 = cbind(row.names(tmp2), tmp2)
-names(tmp2) = c("Year", "Percent")
-
-#ggplot
-ggplot(data = tmp2, aes(x = Year, y = Percent, group = 1)) +
-  geom_point() +
-  geom_line()
-
-
-
-###weighted -- for the final report, we should be reporting weighted results 
-#set up the survey sampling design 
-yrbsdes = svydesign(id=~PSU, weight=~weight, strata=~stratum, data=yrbs_all, nest=TRUE) 
-
-svytable(~q26, yrbsdes)
-
-tmp1 = svytable(~q26 + year, yrbsdes) #q26 by year
-tmp1
-
-#creating dataset for making ggplot
-tmp2 = data.frame(prop.table(tmp1[c("Yes", "No"), ], 2)["Yes", ] * 100)
-tmp2 = cbind(row.names(tmp2), tmp2)
-names(tmp2) = c("Year", "Percent")
-
-#ggplot
-ggplot(data = tmp2, aes(x = Year, y = Percent, group = 1)) +
-  geom_point() +
-  geom_line()
-
-```
-
 ## Modelling 
 
 ### QN26
 
 ```{r}
-## w/ dependent variable: year
+summary(svyglm(qn26 ~ qn8 * factor(year), data = black_data, design = yrbsdes, family = quasibinomial()))
+summary(svyglm(qn26 ~ qn9 * factor(year), data = black_data, design = yrbsdes, family = quasibinomial()))
+summary(svyglm(qn26 ~ qn10 * factor(year), data = black_data, design = yrbsdes, family = quasibinomial()))
+summary(svyglm(qn26 ~ qn11 * factor(year), data = black_data, design = yrbsdes, family = quasibinomial()))
+summary(svyglm(qn26 ~ qn12 * factor(year), data = black_data, design = yrbsdes, family = quasibinomial()))
+summary(svyglm(qn26 ~ qn13 * factor(year), data = black_data, design = yrbsdes, family = quasibinomial()))
 ```
 
