@@ -24,6 +24,7 @@ library(survey)
 library(dplyr)
 library(tidyverse)
 library(gtsummary)
+library(MASS)
 options(survey.lonely.psu="adjust")
 ```
 
@@ -97,7 +98,6 @@ svytable(~q29 + year, yrbsdes, na.action = na.pass, exclude = NULL)
 svytable(~qn29 + year, yrbsdes, na.action = na.pass, exclude = NULL)
 prop.table(svytable(~qn29 + year, yrbsdes), 2) %>% round(3)
 ```
-
 
 ## Independent variable
 
@@ -212,14 +212,102 @@ table(yrbs_all$race7)
 
 ## Modelling 
 
+```{r}
+# convert age variable to qn1
+black_data$qn1 <- substr(black_data$age, 1, 2)
+black_data$qn1 <- as.numeric(black_data$qn1)
+
+# convert gender into: male = 0 and female = 1
+black_data$qn2[black_data$sex == "Female"] <- 1      
+black_data$qn2[black_data$sex == "Male"] <- 0  
+
+# convert grade into numerical variabes
+black_data$qn3[black_data$grade == "9th"] <- 0      
+black_data$qn3[black_data$grade == "10th"] <- 1 
+black_data$qn3[black_data$grade == "11th"] <- 2
+black_data$qn3[black_data$grade == "12th"] <- 3 
+
+# QN65 is un-usable, because it is the variable for "During your life, with whom have you had sexual contact?"; It has the selection of male, female, Females and males and I have never had sexual contact  which are not helpful for analysis
+
+# QN66 is "sexual orientation", such as Heterosexual (straight), Gay or lesbian, Bisexual and Not sure.
+# convert QN66 to: Heterosexual (straight) = 0; Gay or lesbian = 1; Bisexual = 2; Not sure = NA
+black_data$qn66[black_data$q66 == "Heterosexual (straight)"] <- 0      
+black_data$qn66[black_data$q66 == "Gay or lesbian"] <- 1  
+black_data$qn66[black_data$q66 == "Bisexual"] <- 1
+black_data$qn66[black_data$q66 == "Missing"] <- NA 
+black_data$qn66[black_data$q66 == "Not sure"] <- NA
+```
+
 ### QN26
 
 ```{r}
-summary(svyglm(qn26 ~ qn8 * factor(year), data = black_data, design = yrbsdes, family = quasibinomial()))
-summary(svyglm(qn26 ~ qn9 * factor(year), data = black_data, design = yrbsdes, family = quasibinomial()))
-summary(svyglm(qn26 ~ qn10 * factor(year), data = black_data, design = yrbsdes, family = quasibinomial()))
-summary(svyglm(qn26 ~ qn11 * factor(year), data = black_data, design = yrbsdes, family = quasibinomial()))
-summary(svyglm(qn26 ~ qn12 * factor(year), data = black_data, design = yrbsdes, family = quasibinomial()))
-summary(svyglm(qn26 ~ qn13 * factor(year), data = black_data, design = yrbsdes, family = quasibinomial()))
+# load the package for LASSO regression
+library(ISLR)
+attach(Hitters)
+require(glmnet)
+library(plotmo)
+library(readr)
+library(mice)
+library(miselect)
+
+df <- subset(black_data, select = c(year, qn8:qn89, qn1:qn66))
+# check missing values
+colMeans(is.na(df))
+```
+
+This dataset includes lots of missing values, so we need to impute it using the R package mice.
+
+```{r}
+set.seed(12345)
+# Using the mice defaults for sake of example only.
+mids <- mice(df, m = 5, printFlag = FALSE)
+
+# Generate list of completed data.frames
+dfs <- lapply(1:5, function(i) complete(mids, action = i))
+
+# Generate list of imputed design matrices and imputed responses
+x <- list()
+y <- list()
+for (i in 1:5) {
+    x[[i]] <- as.matrix(dfs[[i]][,c('year', paste0("qn", c(8:25, 30:64, 67:89, 1:3, 66)))])
+    y[[i]] <- dfs[[i]]$qn26
+}
+
+# Calculate observational weights
+pf       <- rep(1, 81)
+adWeight <- rep(1, 81)
+
+# Since 'Y' is a binary variable, we use 'family = "binomial"'
+fit <- galasso(x, y, pf, adWeight, family = "binomial")
+
+# By default 'coef' returns the betas for (lambda.min , alpha.min)
+coef(fit)
+```
+
+```{r}
+#perform k-fold cross-validation to find optimal lambda value
+cv_model <- cv.glmnet(x, y, alpha = 1)
+
+#find optimal lambda value that minimizes test MSE
+best_lambda <- cv_model$lambda.min
+best_lambda
+
+#produce plot of test MSE by lambda value
+plot(cv_model) 
+
+#find coefficients of best model
+best_model <- glmnet(x, y, alpha = 1, lambda = best_lambda)
+coef(best_model)
+```
+
+```{r}
+#include weight in glmnet() == LASSO
+#get standard error from somewhere else
+res.qn26 <- svyglm(qn26 ~ qn10*factor(year), 
+               data = black_data, 
+               design = yrbsdes, 
+               family = quasibinomial())
+
+summary(res.qn26)
 ```
 
